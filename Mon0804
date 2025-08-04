@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Progressive Workout Tracker with Sets and Rest Timer</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; }
+    label, select, input, button { display: block; margin: 10px 0; width: 100%; }
+    .set-group { margin-bottom: 10px; padding: 10px; border: 1px solid #ccc; border-radius: 6px; }
+    .log-entry { margin-top: 20px; border-top: 1px solid #ccc; padding-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Workout Tracker</h1>
+  <form id="workout-form">
+    <label for="exercise">Exercise:</label>
+    <select id="exercise" required>
+      <option value="push_up">Push Up</option>
+      <option value="pull_up">Pull Up</option>
+      <option value="dip">Dip</option>
+      <option value="flat_dumbbell_bench">Flat Dumbbell Bench</option>
+      <option value="single_arm_row">Single Arm Dumbbell Row</option>
+      <option value="lat_pull_down">Lat Pull Down</option>
+      <option value="cable_row">Cable Row</option>
+      <option value="hamstring_curl">Hamstring Curl Machine</option>
+      <option value="leg_extension">Leg Extension Machine</option>
+      <option value="goblet_squat">Goblet Squat</option>
+      <option value="deadlift">Deadlift</option>
+      <option value="dumbbell_bicep_curl">Dumbbell Bicep Curl</option>
+    </select>
+
+    <div id="sets-container">
+      <div class="set-group">
+        <label>Set 1 Weight (lbs):</label>
+        <input type="number" class="weight" value="0" min="0" required />
+        <label>Set 1 Reps:</label>
+        <input type="number" class="reps" min="1" required />
+      </div>
+    </div>
+    <button type="button" id="add-set">Add Another Set</button>
+
+    <button type="submit">Log Workout</button>
+  </form>
+
+  <button id="start-timer">Start 30s Rest Timer</button>
+  <div id="timer-display" style="font-weight:bold; margin-top:10px;"></div>
+
+  <div id="log"></div>
+
+  <script>
+    const form = document.getElementById("workout-form");
+    const exerciseSelect = document.getElementById("exercise");
+    const setsContainer = document.getElementById("sets-container");
+    const addSetBtn = document.getElementById("add-set");
+    const log = document.getElementById("log");
+    const timerBtn = document.getElementById("start-timer");
+    const timerDisplay = document.getElementById("timer-display");
+
+    let timerRunning = false;
+    let timeLeft = 0;
+    let interval = null;
+
+    function getHistory() {
+      return JSON.parse(localStorage.getItem("workoutHistory")) || [];
+    }
+
+    function saveHistory(data) {
+      localStorage.setItem("workoutHistory", JSON.stringify(data));
+    }
+
+    function getNextWeight(reps, weight) {
+      if (reps < 6) return +(weight * 0.98).toFixed(2);
+      if (reps < 8) return weight;
+      return +(weight * 1.02).toFixed(2);
+    }
+
+    function renderLog() {
+      const history = getHistory();
+      log.innerHTML = history.map(entry => {
+        const setsHtml = entry.sets.map((set, i) =>
+          `<div>Set ${i + 1}: ${set.reps} reps @ ${set.weight} lbs → Next: ${set.nextWeight} lbs</div>`
+        ).join('');
+        return `
+          <div class="log-entry">
+            <strong>${entry.exercise.replace(/_/g, ' ')}</strong> <br />
+            ${setsHtml}
+            <small>${entry.date}</small>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function createSetGroup(setNumber) {
+      const div = document.createElement('div');
+      div.className = 'set-group';
+      div.innerHTML = `
+        <label>Set ${setNumber} Weight (lbs):</label>
+        <input type="number" class="weight" value="0" min="0" required />
+        <label>Set ${setNumber} Reps:</label>
+        <input type="number" class="reps" min="1" required />
+      `;
+      return div;
+    }
+
+    addSetBtn.addEventListener("click", () => {
+      const currentSets = setsContainer.querySelectorAll('.set-group').length;
+      setsContainer.appendChild(createSetGroup(currentSets + 1));
+    });
+
+    exerciseSelect.addEventListener("change", () => {
+      const exercise = exerciseSelect.value;
+      if (["push_up", "pull_up", "dip"].includes(exercise)) {
+        setsContainer.querySelectorAll('.weight').forEach(input => input.value = 0);
+      }
+    });
+
+    form.addEventListener("submit", e => {
+      e.preventDefault();
+
+      const exercise = exerciseSelect.value;
+      const weightInputs = [...setsContainer.querySelectorAll('.weight')];
+      const repsInputs = [...setsContainer.querySelectorAll('.reps')];
+
+      const sets = weightInputs.map((weightInput, i) => {
+        const weight = parseFloat(weightInput.value);
+        const reps = parseInt(repsInputs[i].value);
+        const nextWeight = getNextWeight(reps, weight);
+        return { weight, reps, nextWeight };
+      });
+
+      const date = new Date().toLocaleDateString();
+
+      const newEntry = { exercise, sets, date };
+      const history = getHistory();
+      history.unshift(newEntry);
+      saveHistory(history);
+      renderLog();
+
+      // Reset form: remove extra sets, keep only one
+      while (setsContainer.children.length > 1) {
+        setsContainer.removeChild(setsContainer.lastChild);
+      }
+      setsContainer.querySelector('.weight').value = 0;
+      setsContainer.querySelector('.reps').value = '';
+
+      form.reset();
+    });
+
+    timerBtn.addEventListener("click", () => {
+      if (timerRunning) {
+        timeLeft += 30; // Add 30 seconds if timer running
+      } else {
+        timerRunning = true;
+        timeLeft = 30;
+        timerDisplay.textContent = `Rest: ${timeLeft}s`;
+        interval = setInterval(() => {
+          timeLeft--;
+          timerDisplay.textContent = `Rest: ${timeLeft}s`;
+          if (timeLeft <= 0) {
+            clearInterval(interval);
+            timerRunning = false;
+            timerDisplay.textContent = "Rest over. Let's go!";
+          }
+        }, 1000);
+      }
+    });
+
+    renderLog();
+  </script>
+</body>
+</html>
